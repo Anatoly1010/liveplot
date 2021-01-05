@@ -4,15 +4,16 @@ import uuid
 import warnings
 import numpy as np
 import logging
-from PyQt4.QtNetwork import QLocalSocket
-from PyQt4.QtCore import QCoreApplication, QSharedMemory
+from PyQt5.QtNetwork import QLocalSocket
+from PyQt5.QtCore import QCoreApplication, QSharedMemory
+import time
 
 __author__ = 'phil'
 
 logging.root.setLevel(logging.WARNING)
 
 class LivePlotClient(object):
-    def __init__(self, timeout=2000, size=2**20):
+    def __init__(self, timeout=2000, size=2**28):
         self.app = QCoreApplication.instance()
         if self.app is None:
             self.app = QCoreApplication([])
@@ -27,7 +28,7 @@ class LivePlotClient(object):
         if not self.shared_mem.create(size):
             raise Exception("Couldn't create shared memory %s" % self.shared_mem.errorString())
         logging.debug('Memory created with key %s and size %s' % (key, self.shared_mem.size()))
-        self.sock.write(key)
+        self.sock.write(key.encode())
         self.sock.waitForBytesWritten()
 
         self.is_connected = True
@@ -41,10 +42,10 @@ class LivePlotClient(object):
     def send_to_plotter(self, meta, arr=None):
         if not self.is_connected:
             return
-
         if meta["name"] is None:
             meta["name"] = "*";
         if arr is not None:
+            
             arrbytes = bytearray(arr)
             arrsize = len(arrbytes)
             if arrsize > self.shared_mem.size():
@@ -54,18 +55,18 @@ class LivePlotClient(object):
             meta['shape'] = arr.shape
         else:
             meta['arrsize'] = 0
-        meta_bytes = json.dumps(meta).ljust(200)
-        if len(meta_bytes) > 200:
+        meta_bytes = json.dumps(meta).ljust(300)
+        if len(meta_bytes) > 300:
             raise ValueError("meta object is too large (> 200 char)")
 
         if arr is None:
-            self.sock.write(meta_bytes)
+            self.sock.write(meta_bytes.encode())
         else:
             if not self.sock.bytesAvailable():
                 self.sock.waitForReadyRead()
             self.sock.read(2)
             self.shared_mem.lock()
-            self.sock.write(meta_bytes)
+            self.sock.write(meta_bytes.encode())
             region = self.shared_mem.data()
             region[:arrsize] = arrbytes
             self.shared_mem.unlock()
@@ -86,8 +87,10 @@ class LivePlotClient(object):
             'label': label,
         }
         self.send_to_plotter(meta, arr)
+        self.send_to_plotter({'name':'none', 'operation':'none'}, np.asarray([0]))
 
-    def plot_z(self, name, arr, extent=None, start_step=None):
+    def plot_z(self, name, arr, extent=None, start_step=None, xname='X axis',
+    xscale='arb. u.', yname='Y axis', yscale='arb. u.', zname='Y axis', zscale='arb. u.'):
         '''
         extent is ((initial x, final x), (initial y, final y))
         start_step is ((initial x, delta x), (initial_y, final_y))
@@ -104,20 +107,33 @@ class LivePlotClient(object):
             'operation':'plot_z',
             'rank': 2,
             'start_step': start_step,
+            'X': xscale,
+            'Y': yscale,
+            'Z': zscale,
+            'Xname': xname,
+            'Yname': yname,
+            'Zname': zname,
         }
         self.send_to_plotter(meta, arr)
+        self.send_to_plotter({'name':'none', 'operation':'none'}, np.asarray([0]))
 
-    def plot_xy(self, name, xs, ys, label=''):
+    def plot_xy(self, name, xs, ys, label='', xname='X axis', xscale='arb. u.', yname='Y axis', yscale='arb. u.',scatter='False'):
         arr = np.array([xs, ys])
         meta = {
             'name': name,
             'operation':'plot_xy',
             'rank': 1,
             'label': label,
+            'X': xscale,
+            'Y': yscale,
+            'Xname': xname,
+            'Yname': yname,
+            'Scatter':scatter
         }
         self.send_to_plotter(meta, np.array([xs, ys]))
+        self.send_to_plotter({'name':'none', 'operation':'none'}, np.asarray([0]))
 
-    def append_y(self, name, point, start_step=(0, 1), label=''):
+    def append_y(self, name, point, start_step=(0, 1), label='', xname='X axis', xscale='arb. u.', yname='Y axis', yscale='arb. u.'):
         self.send_to_plotter({
             'name': name,
             'operation': 'append_y',
@@ -125,7 +141,12 @@ class LivePlotClient(object):
             'start_step': start_step,
             'rank': 1,
             'label': label,
+            'X': xscale,
+            'Y': yscale,
+            'Xname': xname,
+            'Yname': yname,
         })
+        self.send_to_plotter({'name':'none', 'operation':'none'}, np.asarray([0]))
 
     def append_xy(self, name, x, y, label=''):
         self.send_to_plotter({
@@ -135,16 +156,25 @@ class LivePlotClient(object):
             'rank': 1,
             'label': label,
         })
+        self.send_to_plotter({'name':'none', 'operation':'none'}, np.asarray([0]))
 
-    def append_z(self, name, arr, start_step=None):
+    def append_z(self, name, arr, start_step=None, xname='X axis',
+    xscale='arb. u.', yname='Y axis', yscale='arb. u.', zname='Y axis', zscale='arb. u.'):
         arr = np.array(arr)
         meta = {
             'name': name,
             'operation':'append_z',
             'rank': 2,
             'start_step': start_step,
+            'X': xscale,
+            'Y': yscale,
+            'Z': zscale,
+            'Xname': xname,
+            'Yname': yname,
+            'Zname': zname,
             }
         self.send_to_plotter(meta, arr)
+        self.send_to_plotter({'name':'none', 'operation':'none'}, np.asarray([0]))
 
     def label(self, name, text):
         self.send_to_plotter({
@@ -152,6 +182,7 @@ class LivePlotClient(object):
             'operation': 'label',
             'value': text
         })
+        self.send_to_plotter({'name':'none', 'operation':'none'}, np.asarray([0]))
 
     def clear(self, name=None):
         self.send_to_plotter({

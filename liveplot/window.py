@@ -3,14 +3,16 @@ import os
 import json
 import logging
 import signal
-import widgets
+import socket
+from . import widgets
 import numpy as np
-from PyQt4.QtCore import QSharedMemory, QSize
-from PyQt4.QtGui import QMainWindow, QApplication, QStandardItem, QDockWidget, QStandardItemModel, QListView, QAction, \
-    QIcon
-from PyQt4.QtNetwork import QLocalServer
-from PyQt4.Qt import Qt as QtConst
+from PyQt5.QtCore import QSharedMemory, QSize
+from PyQt5.QtWidgets import QMainWindow, QApplication, QDockWidget, QListView, QAction
+from PyQt5.QtGui import QStandardItem,QStandardItemModel, QIcon
+from PyQt5.QtNetwork import QLocalServer
+from PyQt5.Qt import Qt as QtConst
 from pyqtgraph.dockarea import DockArea
+import time
 
 logging.root.setLevel(logging.WARNING)
 
@@ -18,7 +20,8 @@ logging.root.setLevel(logging.WARNING)
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.setWindowTitle("Liveplot")
+        self.setStyleSheet("background-color: rgb(24, 25, 26); color: rgb(255, 170, 0); ") 
+        self.setWindowTitle("Liveplot - Plotting dashboard!")
         self.setWindowIcon(QIcon('icon.ico'))
         self.dockarea = DockArea()
         self.setCentralWidget(self.dockarea)
@@ -38,7 +41,7 @@ class MainWindow(QMainWindow):
 
 
     def close(self, sig=None, frame=None):
-        print 'closing'
+        print('closing')
         for conn in self.conns:
             conn.close()
         for shm in self.shared_mems:
@@ -50,7 +53,7 @@ class MainWindow(QMainWindow):
         logging.debug('connection accepted')
         conn = self.server.nextPendingConnection()
         conn.waitForReadyRead()
-        key = str(conn.read(36))
+        key = str(conn.read(36).decode())
         memory = QSharedMemory()
         memory.setKey(key)
         memory.attach()
@@ -60,24 +63,25 @@ class MainWindow(QMainWindow):
         self.shared_mems.append(memory)
         conn.readyRead.connect(lambda: self.read_from(conn, memory))
         conn.disconnected.connect(memory.detach)
-        conn.write('ok')
+        conn.write(b'ok')
 
     # noinspection PyNoneFunctionAssignment
     def read_from(self, conn, memory):
         logging.debug('reading data')
-        self.meta = json.loads(conn.read(200))
+        self.meta = json.loads(conn.read(300).decode())
         if self.meta['arrsize'] != 0:
             memory.lock()
             ba = memory.data()[0:self.meta['arrsize']]
-            arr = np.frombuffer(buffer(ba))
+            arr = np.frombuffer(memoryview(ba))
             memory.unlock()
-            conn.write('ok')
+            conn.write(b'ok')
             arr = arr.reshape(self.meta['shape']).copy()
         else:
             arr = None
         self.do_operation(arr)
         if conn.bytesAvailable():
             self.read_from(conn, memory)
+
 
     #     if not self.target_size:
     #         self.meta = conn._socket.recv_json()
@@ -126,14 +130,14 @@ class MainWindow(QMainWindow):
 
         elif name == "*":
             if operation == 'clear':
-                map(clear, self.namelist.keys())
+                list(map(clear, list(self.namelist.keys())))
             elif operation == 'close':
-                map(close, self.namelist.keys())
+                list(map(close, list(self.namelist.keys())))
             elif operation == 'remove':
-                map(remove, self.namelist.keys())
+                list(map(remove, list(self.namelist.keys())))
             return
         else:
-            if operation in ('clear', 'close', 'remove'):
+            if operation in ('clear', 'close', 'remove','none'):
                 return
             pw = self.add_new_plot(meta['rank'], name)
 
@@ -141,8 +145,11 @@ class MainWindow(QMainWindow):
             pw.clear()
         elif operation == 'close':
             pw.close()
+        elif operation == 'none':
+            pass
         elif operation == 'remove':
             del self.namelist[name]
+
 
         elif operation == 'plot_y':
             start_step = meta['start_step']
@@ -154,18 +161,42 @@ class MainWindow(QMainWindow):
                 pw.plot(xs, arr, name=label)
             else:
                 pw.plot(arr, name=label)
+
+
         elif operation == 'plot_xy':
             label = meta['label']
-            pw.plot(arr[0], arr[1], parametric=True, name=label)
+            xnam = meta['Xname']
+            xscal = meta['X']
+            ynam = meta['Yname']
+            yscal = meta['Y']
+            scat = meta['Scatter']
+            pw.plot(arr[0], arr[1], parametric=True, name=label, xname=xnam, xscale =xscal, yname=ynam, yscale =yscal, scatter=scat)
+
+
         elif operation == 'plot_z':
             start_step = meta['start_step']
+            xnam = meta['Xname']
+            xscal = meta['X']
+            ynam = meta['Yname']
+            yscal = meta['Y']
+            znam = meta['Zname']
+            zscal = meta['Z']
             if start_step is not None:
                 (x0, dx), (y0, dy) = start_step
-                pw.setImage(arr, pos=(x0, y0), scale=(dx, dy))
+                pw.setAxisLabels(xname=xnam, xscale =xscal, yname=ynam, yscale =yscal, zname=znam, zscale =zscal)
+                pw.setImage(arr, pos=(x0, y0), scale=(dx, dy), axes={'y':0, 'x':1})
             else:
-                pw.setImage(arr)
+                pw.setAxisLabels(xname=xnam, xscale =xscal, yname=ynam, yscale =yscal, zname=znam, zscale =zscal)
+                pw.setImage(arr, axes={'y':0, 'x':1})
+
+
         elif operation == 'append_y':
             label = meta['label']
+            xnam = meta['Xname']
+            xscal = meta['X']
+            ynam = meta['Yname']
+            yscal = meta['Y']
+
             xs, ys = pw.get_data(label)
             new_ys = list(ys)
             new_ys.append(meta['value'])
@@ -174,9 +205,11 @@ class MainWindow(QMainWindow):
                 x0, dx = start_step
                 nx = len(new_ys)
                 xs = np.linspace(x0, x0 + (nx - 1)*dx, nx)
-                pw.plot(xs, new_ys, name=label)
+                pw.plot(xs, new_ys, name=label, xname=xnam, xscale =xscal, yname=ynam, yscale =yscal)
             else:
-                pw.plot(new_ys, name=label)
+                pw.plot(new_ys, name=label, xname=xnam, xscale =xscal, yname=ynam, yscale =yscal)
+
+
         elif operation == 'append_xy':
             label = meta['label']
             xs, ys = pw.get_data(label)
@@ -187,21 +220,31 @@ class MainWindow(QMainWindow):
             new_ys.append(yn)
             pw.plot(new_xs, new_ys, parametric=True, name=label)
 
+
         elif operation == 'append_z':
             image = pw.get_data()
             if image is None:
                 image = np.array([arr])
             else:
                 try:
-                    image = np.vstack((image, [arr]))
+                    image = np.vstack((np.transpose(image), [arr]))
                 except ValueError:
                     image = np.array([arr])
             start_step = meta['start_step']
+            xnam = meta['Xname']
+            xscal = meta['X']
+            ynam = meta['Yname']
+            yscal = meta['Y']
+            znam = meta['Zname']
+            zscal = meta['Z']
             if start_step is not None:
                 (x0, dx), (y0, dy) = start_step
-                pw.setImage(image, pos=(x0, y0), scale=(dx, dy))
+                pw.setAxisLabels(xname=xnam, xscale =xscal, yname=ynam, yscale =yscal, zname=znam, zscale =zscal)
+                pw.setImage(image, pos=(x0, y0), scale=(dx, dy), axes={'y':0, 'x':1})
             else:
-                pw.setImage(image)
+                pw.setAxisLabels(xname=xnam, xscale =xscal, yname=ynam, yscale =yscal)
+                pw.setImage(image, axes={'y':0, 'x':1})
+
 
         elif operation == 'label':
             pw.setTitle(meta['value'])
@@ -233,8 +276,13 @@ class NameList(QDockWidget):
         self.namelist_view.doubleClicked.connect(self.activate_item)
         self.namelist_view.setContextMenuPolicy(QtConst.ActionsContextMenu)
         delete_action = QAction("Delete Selected", self.namelist_view)
+        ###
+        pause_action = QAction("Stop Script", self.namelist_view)
         delete_action.triggered.connect(self.delete_item)
+        pause_action.triggered.connect(self.pause)
         self.namelist_view.addAction(delete_action)
+        ###
+        self.namelist_view.addAction(pause_action)
 
     def activate_item(self, index):
         item = self.namelist_model.itemFromIndex(index)
@@ -247,6 +295,12 @@ class NameList(QDockWidget):
         index = self.namelist_view.currentIndex()
         item = self.namelist_model.itemFromIndex(index)
         del self[str(item.text())]
+
+    def pause(self):
+        sock = socket.socket()
+        sock.connect(('localhost', 9091))
+        sock.send(b'stop')
+        sock.close()
 
     def __getitem__(self, item):
         return self.plot_dict[item]
@@ -266,7 +320,7 @@ class NameList(QDockWidget):
         del self.plot_dict[name]
 
     def keys(self):
-        return self.plot_dict.keys();
+        return list(self.plot_dict.keys());
 
 
 def main():

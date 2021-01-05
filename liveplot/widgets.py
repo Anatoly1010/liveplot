@@ -1,4 +1,4 @@
-from PyQt4 import QtGui, QtCore
+from PyQt5 import QtWidgets, QtCore
 import warnings
 import pyqtgraph as pg
 import numpy as np
@@ -14,18 +14,18 @@ class CloseableDock(Dock):
     docklist = []
     def __init__(self, *args, **kwargs):
         super(CloseableDock, self).__init__(*args, **kwargs)
-        style = QtGui.QStyleFactory().create("windows")
-        close_icon = style.standardIcon(QtGui.QStyle.SP_TitleBarCloseButton)
-        close_button = QtGui.QPushButton(close_icon, "", self)
+        style = QtWidgets.QStyleFactory().create("Fusion")
+        close_icon = style.standardIcon(QtWidgets.QStyle.SP_TitleBarCloseButton)
+        close_button = QtWidgets.QPushButton(close_icon, "", self)
         close_button.clicked.connect(self.close)
-        close_button.setGeometry(0, 0, 20, 20)
+        close_button.setGeometry(0, 0, 15, 15)
         close_button.raise_()
         self.closeClicked = close_button.clicked
 
-        max_icon = style.standardIcon(QtGui.QStyle.SP_TitleBarMaxButton)
-        max_button = QtGui.QPushButton(max_icon, "", self)
+        max_icon = style.standardIcon(QtWidgets.QStyle.SP_TitleBarMaxButton)
+        max_button = QtWidgets.QPushButton(max_icon, "", self)
         max_button.clicked.connect(self.maximize)
-        max_button.setGeometry(20, 0, 20, 20)
+        max_button.setGeometry(15, 0, 15, 15)
         max_button.raise_()
 
         self.closed = False
@@ -77,7 +77,7 @@ class CrosshairPlotWidget(pg.PlotWidget):
                     xdata, ydata = data_item.xData, data_item.yData
                     index_distance = lambda i: (xdata[i]-view_x)**2 + (ydata[i] - view_y)**2
                     if self.parametric:
-                        index = min(range(len(xdata)), key=index_distance)
+                        index = min(list(range(len(xdata))), key=index_distance)
                     else:
                         index = min(np.searchsorted(xdata, view_x), len(xdata)-1)
                         if index and xdata[index] - view_x > view_x - xdata[index - 1]:
@@ -91,7 +91,7 @@ class CrosshairPlotWidget(pg.PlotWidget):
             (pt_x, pt_y), _ = min(best_guesses, key=lambda x: x[1])
             self.v_line.setPos(pt_x)
             self.h_line.setPos(pt_y)
-            self.label.setText("x=%.2e, y=%.2e" % (pt_x, pt_y))
+            self.label.setText("x=%.2f, y=%.2f" % (pt_x, pt_y))
 
     def add_cross_hair(self):
         self.h_line = pg.InfiniteLine(angle=0, movable=False)
@@ -113,22 +113,51 @@ class CrosshairPlotWidget(pg.PlotWidget):
 class CrosshairDock(CloseableDock):
     def __init__(self, **kwargs):
         self.plot_widget = CrosshairPlotWidget()
-        self.plot_widget.addLegend()
+        self.legend = self.plot_widget.addLegend(offset=(50,10),horSpacing=35)
+        self.plot_widget.setBackground(None)
         kwargs['widget'] = self.plot_widget
         super(CrosshairDock, self).__init__(**kwargs)
-        self.avail_colors = [(255,0,0), (0,0,255), (0,255,0), (255,255,255)]
+        self.avail_colors = [pg.mkPen(color=(255,0,255),width=1.5),pg.mkPen(color=(255,0,0),width=1.5),
+        pg.mkPen(color=(0,0,255),width=1.5), pg.mkPen(color=(0,255,0),width=1.5), pg.mkPen(color=(255,255,255),width=1.5)]
+        self.avail_symbols= ['x','p','star','s','o']
+        self.avail_sym_pens = [pg.mkPen(color=(255, 255, 255), width=0),pg.mkPen(color=(0, 255, 0), width=0),
+        pg.mkPen(color=(0, 0, 255), width=0),pg.mkPen(color=(255, 0, 0), width=0),pg.mkPen(color=(255, 0, 255), width=0)]
+        self.avail_sym_brush = [pg.mkBrush(255, 255, 255, 255),pg.mkBrush(0, 255, 0, 255),pg.mkBrush(0, 0, 255, 255),
+        pg.mkBrush(255, 0, 0, 255),pg.mkBrush(255, 0, 255, 255)]
         self.used_colors = {}
+        self.used_pens = {}
+        self.used_symbols = {}
+        self.used_brush = {}
         self.curves = {}
 
     def plot(self, *args, **kwargs):
         self.plot_widget.parametric = kwargs.pop('parametric', False)
+        self.plot_widget.setLabel("bottom", text=kwargs.get('xname', ''), units=kwargs.get('xscale', ''))
+        self.plot_widget.setLabel("left", text=kwargs.get('yname', ''), units=kwargs.get('yscale', ''))
         name = kwargs.get('name', '')
-        if name in self.curves:
-            kwargs['pen'] = self.used_colors[name]
-            self.curves[name].setData(*args, **kwargs)
+
+        if name in self.curves: 
+            if kwargs.get('scatter', '')=='True':
+                kwargs['pen'] = None;
+                kwargs['symbol'] = self.used_symbols[name]
+                kwargs['symbolPen'] = self.used_pens[name]
+                kwargs['symbolBrush'] = self.used_brush[name]
+                kwargs['symbolSize'] = 7
+                self.curves[name].setData(*args, **kwargs)
+            elif kwargs.get('scatter', '')=='False':
+                kwargs['pen'] = self.used_colors[name]
+                self.curves[name].setData(*args, **kwargs)
         else:
-            kwargs['pen'] = self.used_colors[name] = self.avail_colors.pop()
-            self.curves[name] = self.plot_widget.plot(*args, **kwargs)
+            if kwargs.get('scatter', '')=='True':
+                kwargs['pen'] = None;
+                kwargs['symbol'] = self.used_symbols[name] = self.avail_symbols.pop()
+                kwargs['symbolPen'] = self.used_pens[name] = self.avail_sym_pens.pop()
+                kwargs['symbolBrush'] = self.used_brush[name] = self.avail_sym_brush.pop()
+                kwargs['symbolSize'] = 7
+                self.curves[name] = self.plot_widget.plot(*args, **kwargs)
+            elif kwargs.get('scatter', '')=='False':
+                kwargs['pen'] = self.used_colors[name] = self.avail_colors.pop()
+                self.curves[name] = self.plot_widget.plot(*args, **kwargs)
 
     def clear(self):
         self.plot_widget.clear()
@@ -151,7 +180,7 @@ class CrosshairDock(CloseableDock):
         self.plot_widget.setTitle(text)
 
 class CrossSectionDock(CloseableDock):
-    def __init__(self, trace_size=80, **kwargs):
+    def __init__(self, trace_size=90, **kwargs):
         self.plot_item = view = pg.PlotItem(labels=kwargs.pop('labels', None))
         self.img_view = kwargs['widget'] = pg.ImageView(view=view)
         view.setAspectLocked(lock=False)
@@ -163,23 +192,23 @@ class CrossSectionDock(CloseableDock):
         self.search_mode = False
         self.signals_connected = False
         self.set_histogram(False)
-        histogram_action = QtGui.QAction('Histogram', self)
+        histogram_action = QtWidgets.QAction('Histogram', self)
         histogram_action.setCheckable(True)
         histogram_action.triggered.connect(self.set_histogram)
         self.img_view.scene.contextMenu.append(histogram_action)
 
-        self.autolevels_action = QtGui.QAction('Autoscale Levels', self)
+        self.autolevels_action = QtWidgets.QAction('Autoscale Levels', self)
         self.autolevels_action.setCheckable(True)
         self.autolevels_action.setChecked(True)
         self.autolevels_action.triggered.connect(self.redraw)
         self.ui.histogram.item.sigLevelChangeFinished.connect(lambda: self.autolevels_action.setChecked(False))
         self.img_view.scene.contextMenu.append(self.autolevels_action)
 
-        self.clear_action = QtGui.QAction('Clear Contents', self)
+        self.clear_action = QtWidgets.QAction('Clear Contents', self)
         self.clear_action.triggered.connect(self.clear)
         self.img_view.scene.contextMenu.append(self.clear_action)
 
-        self.ui.histogram.gradient.loadPreset('thermal')
+        self.ui.histogram.gradient.loadPreset('bipolar')
         try:
             self.connect_signal()
         except RuntimeError:
@@ -187,26 +216,36 @@ class CrossSectionDock(CloseableDock):
 
         self.y_cross_index = 0
         self.h_cross_section_widget = CrosshairPlotWidget()
-        self.h_cross_dock = CloseableDock(name='x trace', widget=self.h_cross_section_widget, area=self.area)
+        self.h_cross_dock = CloseableDock(name='X trace', widget=self.h_cross_section_widget, area=self.area)
         self.h_cross_section_widget.add_cross_hair()
         self.h_cross_section_widget.search_mode = False
         self.h_cross_section_widget_data = self.h_cross_section_widget.plot([0,0])
 
         self.x_cross_index = 0
         self.v_cross_section_widget = CrosshairPlotWidget()
-        self.v_cross_dock = CloseableDock(name='y trace', widget=self.v_cross_section_widget, area=self.area)
+        self.v_cross_dock = CloseableDock(name='Y trace', widget=self.v_cross_section_widget, area=self.area)
         self.v_cross_section_widget.add_cross_hair()
         self.v_cross_section_widget.search_mode = False
         self.v_cross_section_widget_data = self.v_cross_section_widget.plot([0,0])
 
     def setLabels(self, xlabel="X", ylabel="Y", zlabel="Z"):
-        print self.h_cross_dock.label
+        print(self.h_cross_dock.label)
         self.plot_item.setLabels(bottom=(xlabel,), left=(ylabel,))
         self.h_cross_section_widget.plotItem.setLabels(bottom=xlabel, left=zlabel)
         self.v_cross_section_widget.plotItem.setLabels(bottom=ylabel, left=zlabel)
         self.ui.histogram.item.axis.setLabel(text=zlabel)
 
+    def setAxisLabels(self, *args, **kwargs):
+        self.plot_item.setLabel(axis='bottom', text=kwargs.get('xname', ''), units=kwargs.get('xscale', ''))
+        self.plot_item.setLabel(axis='left', text=kwargs.get('yname', ''), units=kwargs.get('yscale', ''))
+        self.v_cross_section_widget.plotItem.setLabel(axis='left', text=kwargs.get('zname', ''), units=kwargs.get('zscale', ''))
+        self.h_cross_section_widget.plotItem.setLabel(axis='bottom', text=kwargs.get('xname', ''), units=kwargs.get('xscale', ''))
+        self.v_cross_section_widget.plotItem.setLabel(axis='bottom', text=kwargs.get('yname', ''), units=kwargs.get('yscale', ''))
+        self.h_cross_section_widget.plotItem.setLabel(axis='left', text=kwargs.get('zname', ''), units=kwargs.get('zscale', ''))
+
     def setImage(self, *args, **kwargs):
+        item = self.plot_item.getViewBox()
+        item.invertY(False)        
         if 'pos' in kwargs:
             self._x0, self._y0 = kwargs['pos']
         else:
@@ -237,7 +276,6 @@ class CrossSectionDock(CloseableDock):
             return None
 
     def clear(self):
-        self.img_view.setImage(np.array([[0]]))
         self.plot_item.enableAutoRange()
 
     def toggle_cross_section(self):
@@ -321,7 +359,7 @@ class CrossSectionDock(CloseableDock):
             self.y_cross_index = max(min(int(item_y), max_y-1), 0)
             z_val = self.imageItem.image[self.x_cross_index, self.y_cross_index]
             self.update_cross_section()
-            self.text_item.setText("x=%.2e, y=%.2e, z=%.2e" % (view_x, view_y, z_val))
+            self.text_item.setText("x=%.2f, y=%.2f, z=%.2f" % (view_x, view_y, z_val))
 
     def update_cross_section(self):
         nx, ny = self.imageItem.image.shape
@@ -341,8 +379,8 @@ class MoviePlotDock(CrossSectionDock):
         super(MoviePlotDock, self).__init__(*args, **kwargs)
         self.setImage(array)
         self.tpts = len(array)
-        play_button = QtGui.QPushButton("Play")
-        stop_button = QtGui.QPushButton("Stop")
+        play_button = QtWidgets.QPushButton("Play")
+        stop_button = QtWidgets.QPushButton("Stop")
         stop_button.hide()
         self.addWidget(play_button)
         self.addWidget(stop_button)

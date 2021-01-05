@@ -38,6 +38,6 @@ try:
         ))
 
 except ImportError:
-    print 'py2exe not found. py2exe command not available'
+    print ('py2exe not found. py2exe command not available')
 
 setup(**args)
