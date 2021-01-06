@@ -7,7 +7,7 @@ and image plots, look elsewhere. But if you just want to see your data as it
 comes in to your script, with minimal effort, and without the possibility of
 graphics bugs crashing your script, this might be for you. 
 
-![](https://raw.github.com/PhilReinhold/liveplot/master/screenshot.png)
+![](https://github.com/Anatoly1010/liveplot/screenshot.png)
 
 Liveplot works in two
 processes, one of which is a pyqt application hosting the window, the other is
@@ -20,7 +20,7 @@ it is overwritten.
 Requirements
 ------------
 - Numpy
-- [PyQt4](http://www.riverbankcomputing.com/software/pyqt/download)
+- [PyQt5](http://www.riverbankcomputing.com/software/pyqt/download)
 - [pyqtgraph](http://www.pyqtgraph.org)
 
 pyqtgraph will be installed automatically from PyPI if not found

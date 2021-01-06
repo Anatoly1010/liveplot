@@ -4,6 +4,8 @@ import pyqtgraph as pg
 import numpy as np
 from pyqtgraph.dockarea import Dock
 
+pg.setConfigOption('background', (24,25,26))
+
 def get_widget(rank, name):
     return {
         1: CrosshairDock,
@@ -14,7 +16,7 @@ class CloseableDock(Dock):
     docklist = []
     def __init__(self, *args, **kwargs):
         super(CloseableDock, self).__init__(*args, **kwargs)
-        style = QtWidgets.QStyleFactory().create("Fusion")
+        style = QtWidgets.QStyleFactory().create("windows")
         close_icon = style.standardIcon(QtWidgets.QStyle.SP_TitleBarCloseButton)
         close_button = QtWidgets.QPushButton(close_icon, "", self)
         close_button.clicked.connect(self.close)
@@ -114,7 +116,7 @@ class CrosshairDock(CloseableDock):
     def __init__(self, **kwargs):
         self.plot_widget = CrosshairPlotWidget()
         self.legend = self.plot_widget.addLegend(offset=(50,10),horSpacing=35)
-        self.plot_widget.setBackground(None)
+        #self.plot_widget.setBackground(None)
         kwargs['widget'] = self.plot_widget
         super(CrosshairDock, self).__init__(**kwargs)
         self.avail_colors = [pg.mkPen(color=(255,0,255),width=1.5),pg.mkPen(color=(255,0,0),width=1.5),
