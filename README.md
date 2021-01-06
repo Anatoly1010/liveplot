@@ -7,7 +7,7 @@ and image plots, look elsewhere. But if you just want to see your data as it
 comes in to your script, with minimal effort, and without the possibility of
 graphics bugs crashing your script, this might be for you. 
 
-![](https://github.com/Anatoly1010/liveplot/screenshot.png)
+![](https://github.com/Anatoly1010/liveplot/blob/master/screenshot.png)
 
 Liveplot works in two
 processes, one of which is a pyqt application hosting the window, the other is
